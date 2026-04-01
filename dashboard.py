@@ -11,25 +11,31 @@ st.subheader("Forcasting real time energy demand")  # Header of the dashboard
 st.divider()
 
 st.sidebar.header("Load Datasets")
-file_uploaded = st.sidebar.file_uploader("Upload a file", type=["csv"]) # File uploader in the sidebar (because we used st.sidebar.file_uploader its gonna be inside the sidebar)
-if file_uploaded is not None: # If a file is uploaded
-    df = pd.read_csv(file_uploaded) # Read the uploaded CSV file
+file_uploaded = st.sidebar.file_uploader("Upload a file", type=["csv"])
+if file_uploaded is not None:
+    df = pd.read_csv(file_uploaded) 
 else:
-    df = pd.read_csv("data/combined_data_hourly.csv")  # Default dataset
+    df = pd.read_csv("data/combined_data_hourly.csv")
+    # we just want to include the records from 2018 to 2025
+    df = df[df["Date"].between("2018-01-01", "2025-12-31")]
 
-tab1, tab2, tab3, tab4 = st.tabs(["EDA", "Data Visualization", "Hypothesis Testing", "ML Forecast"])  # Creating three tabs
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Preliminary Data Analysis","EDA", "Data Visualization", "Hypothesis Testing", "ML Forecast"])
 
-# with tab1:
-#     st.subheader("Raw Data")
-#     st.dataframe(df)
-#     st.caption("Data collected from an underwater robot by Dr. Greg Reis")
+with tab1: # Preliminary Data Analysis
+     st.subheader("Preliminary Data Analysis")
+     st.write("First let's take a look at the data")
+     st.write(df.head())
 
-#     st.divider()
+     st.write("Number of rows and columns:")
+     st.write(df.shape)
 
-#     st.subheader("Summary Statistics")
-#     st.dataframe(df.describe())
+     st.write("Data types:")
+     st.write(df.dtypes)
 
-# with tab2:
+     st.write("Description of each variable:")
+     st.write(df.describe())
+
+# with tab2: # EDA
 #     st.subheader("Charts")
 #     with st.expander("Scatter Plot"):
 #         fig1 = px.scatter(df,
