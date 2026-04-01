@@ -17,7 +17,7 @@ if file_uploaded is not None: # If a file is uploaded
 else:
     df = pd.read_csv("data/combined_data_hourly.csv")  # Default dataset
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Raw Data", "EDA", "Data Visualization", "Hypothesis Testing", "ML Forecast"])  # Creating three tabs
+tab1, tab2, tab3, tab4 = st.tabs(["EDA", "Data Visualization", "Hypothesis Testing", "ML Forecast"])  # Creating three tabs
 
 # with tab1:
 #     st.subheader("Raw Data")
