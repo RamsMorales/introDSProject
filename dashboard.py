@@ -3,21 +3,19 @@ import streamlit as st # Streamlit library for web apps (dashboards for our data
 import plotly.express as px  # Plotly Express for creating charts
 
 st.title("Final Project")  # Title of the dashboard
+st.header("Ramson Munoz & Valentina Kloster")  # Subtitle of the dashboard
+st.subheader("Forcasting real time energy demand")  # Header of the dashboard
 
-
-# st.header("Spring 2026")  # Header of the dashboard
-# st.subheader("Prof. Greg Reis")  # Subtitle of the dashboard
-
-# To run, go to the terminal and run: streamlit run dashboard.py. Its gonna ask you for an Email, just press enter
+# To run: streamlit run dashboard.py
 
 st.divider()
 
-# st.sidebar.header("Load Datasets")
-# file_uploaded = st.sidebar.file_uploader("Upload a file", type=["csv"]) # File uploader in the sidebar (because we used st.sidebar.file_uploader its gonna be inside the sidebar)
-# if file_uploaded is not None: # If a file is uploaded
-#     df = pd.read_csv(file_uploaded) # Read the uploaded CSV file
-# else:
-#     df = pd.read_csv("logs/biscayne_bay_water_quality2.csv")  # Default dataset
+st.sidebar.header("Load Datasets")
+file_uploaded = st.sidebar.file_uploader("Upload a file", type=["csv"]) # File uploader in the sidebar (because we used st.sidebar.file_uploader its gonna be inside the sidebar)
+if file_uploaded is not None: # If a file is uploaded
+    df = pd.read_csv(file_uploaded) # Read the uploaded CSV file
+else:
+    df = pd.read_csv("data/combined_data_hourly.csv")  # Default dataset
 
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Raw Data", "Preliminary Data Analysis", "Exploratory Data Analysis", "Data Visualization", "Hypothesis Testing", "Machine Learning - Forecast"])  # Creating three tabs
 
