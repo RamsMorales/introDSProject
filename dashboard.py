@@ -19,7 +19,7 @@ st.divider()
 # else:
 #     df = pd.read_csv("logs/biscayne_bay_water_quality2.csv")  # Default dataset
 
-# tab1, tab2, tab3 = st.tabs(["Raw Data", "Charts", "Maps"])  # Creating three tabs
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Raw Data", "Preliminary Data Analysis", "Exploratory Data Analysis", "Data Visualization", "Hypothesis Testing", "Machine Learning - Forecast"])  # Creating three tabs
 
 # with tab1:
 #     st.subheader("Raw Data")
