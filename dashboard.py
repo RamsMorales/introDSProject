@@ -45,7 +45,6 @@ with tab1:  # Preliminary Data Analysis
 
 with tab2: # EDA
         st.subheader("EDA")
-        # 1. Compute summary statistics (mean, median, mode, standard deviation)
         with st.expander("Box Plot"):
             col1, col2 = st.columns([1,4]) # two columns, first one is 1/5 of the width, second one is 4/5 of the width
             with col1: 
@@ -55,7 +54,6 @@ with tab2: # EDA
                 fig1 = px.box(df, x=f"{feature_selector}", title=f"Box Plot of {feature_selector}")
                 st.plotly_chart(fig1)
 
-        # 2. Explore data distributions (histograms, density plots).
         with st.expander("Histogram"):
             col1, col2 = st.columns([1,4]) # two columns, first one is 1/5 of the width, second one is 4/5 of the width
             with col1:
@@ -68,7 +66,6 @@ with tab2: # EDA
                                     nbins=30)
                 st.plotly_chart(fig2)
 
-        # 3. Investigate relationships (correlation matrix, scatter plots).
         with st.expander("Heatmap"):
             df_numeric = df.select_dtypes(include=['number']) # select only numeric columns
             fig4 = px.imshow(df_numeric.corr(),
