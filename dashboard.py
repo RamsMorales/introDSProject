@@ -43,7 +43,28 @@ with tab1:  # Preliminary Data Analysis
     st.write("Description of each variable:")
     st.write(df.describe())
 
-# with tab2: # EDA
+with tab2: # EDA
+        st.subheader("EDA")
+        
+        with st.expander("Box Plot"):
+            col1, col2 = st.columns([1,4]) # two columns, first one is 1/5 of the width, second one is 4/5 of the width
+            with col1: 
+                numeric_columns = df.select_dtypes(include="number").columns
+                feature_selector = st.selectbox("Select a parameter to visualize", numeric_columns)
+            with col2:
+                fig1 = px.box(df, x=f"{feature_selector}", title=f"Box Plot of {feature_selector}")
+                st.plotly_chart(fig1)
+
+
+        with st.expander("Histogram"):
+            col1, col2 = st.columns([1,4]) # two columns, first one is 1/5 of the width, second one is 4/5 of the width
+            with col1:
+                parameter_selected2 = st.selectbox("Select a parameter to visualize", df.columns) # user selection
+            with col2:
+                fig2 = px.histogram(df,
+                                    x=parameter_selected2,
+                                    nbins=30)
+                st.plotly_chart(fig2)
 #     st.subheader("Charts")
 #     with st.expander("Scatter Plot"):
 #         fig1 = px.scatter(df,
