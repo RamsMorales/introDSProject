@@ -131,7 +131,7 @@ with tab2: # EDA
 #                         title="Heatmap of Correlation Matrix")
 #         st.plotly_chart(fig7)
 
-# with tab3:
+#with tab3:
 #     st.subheader("Maps")
 #     fig4 = px.scatter_mapbox(df,
 #                              lon="Longitude", # this is our x axis
