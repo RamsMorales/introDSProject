@@ -63,7 +63,8 @@ with tab2: # EDA
             with col2:
                 fig2 = px.histogram(df,
                                     x=parameter_selected2,
-                                    nbins=30)
+                                    nbins=3,
+                                    title=f"Histogram of {parameter_selected2}")
                 st.plotly_chart(fig2)
 
         with st.expander("Heatmap"):
