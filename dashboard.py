@@ -45,26 +45,38 @@ with tab1:  # Preliminary Data Analysis
 
 with tab2: # EDA
         st.subheader("EDA")
-        
+        # 1. Compute summary statistics (mean, median, mode, standard deviation)
         with st.expander("Box Plot"):
             col1, col2 = st.columns([1,4]) # two columns, first one is 1/5 of the width, second one is 4/5 of the width
             with col1: 
                 numeric_columns = df.select_dtypes(include="number").columns
-                feature_selector = st.selectbox("Select a parameter to visualize", numeric_columns)
+                feature_selector = st.selectbox("Select a parameter to visualize", numeric_columns, key="feature_selector") # user selection
             with col2:
                 fig1 = px.box(df, x=f"{feature_selector}", title=f"Box Plot of {feature_selector}")
                 st.plotly_chart(fig1)
 
-
+        # 2. Explore data distributions (histograms, density plots).
         with st.expander("Histogram"):
             col1, col2 = st.columns([1,4]) # two columns, first one is 1/5 of the width, second one is 4/5 of the width
             with col1:
-                parameter_selected2 = st.selectbox("Select a parameter to visualize", df.columns) # user selection
+                # remove data and Hr_End from the parameter options.
+                filtered_columns = df.columns.difference(["Date", "Hr_End"])
+                parameter_selected2 = st.selectbox("Select a parameter to visualize", filtered_columns, key="parameter_selected2") # user selection
             with col2:
                 fig2 = px.histogram(df,
                                     x=parameter_selected2,
                                     nbins=30)
                 st.plotly_chart(fig2)
+
+        # 3. Investigate relationships (correlation matrix, scatter plots).
+        with st.expander("Heatmap"):
+            df_numeric = df.select_dtypes(include=['number']) # select only numeric columns
+            fig4 = px.imshow(df_numeric.corr(),
+                            text_auto=True,
+                            title="Heatmap of Correlation Matrix")
+            st.plotly_chart(fig4)        
+
+
 #     st.subheader("Charts")
 #     with st.expander("Scatter Plot"):
 #         fig1 = px.scatter(df,
