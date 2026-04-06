@@ -70,7 +70,12 @@ with tab2: # EDA
                             title="Heatmap of Correlation Matrix")
             st.plotly_chart(fig4)        
 
+with tab3:  # key findings
+    ## Plot of daily resolution
+    st.subheader("RT_Demand Shows seasonal behavior on Daily  and Yearly timescale")
 
+    with st.expander("Daily resolution"):
+        date_selected = st.selectbox("Choose a date to visualize:", df["Date"].unique())
 #     st.subheader("Charts")
 #     with st.expander("Scatter Plot"):
 #         fig1 = px.scatter(df,
