@@ -14,10 +14,16 @@ st.divider()
 
 df = pd.read_csv("data/combined_data_hourly.csv")
 # we just want to include the records from 2018 to 2025
-df = df[df["Date"].between("2018-01-01", "2025-12-31")]
+MIN_DATE = "2018-01-01"
+MAX_DATE= "2025-12-31"
+df = df[df["Date"].between(MIN_DATE, MAX_DATE)]
+## Dropping duplicates
 if "02X" in df["Hr_End"].values.astype(str):
-    st.write("True")
+    #st.write("True")
     df.drop(df.loc[df["Hr_End"].astype(str)=="02X"].index,inplace=True)
+
+## Converting HR_End variable to numeric to make Date_Time feature for time series
+df["Hr_End"] = df["Hr_End"].astype(int)
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
     [
@@ -79,19 +85,13 @@ with tab3:  # key findings
     st.subheader("RT_Demand Shows seasonal behavior on Daily  and Yearly timescale")
 
     with st.expander("Daily resolution"):
-        #date_selected = st.selectbox("Choose a date to visualize:", df["Date"].unique())
-        date_selected = st.text_area("Input a date between 2018 and 2025 in yyyy-mm-dd format",value = "2018-01-01")
+        date_selected = st.date_input("Choose a date to visualize",value="2018-01-01",min_value=MIN_DATE,max_value=MAX_DATE,key="Daily_Res") 
         start = st.button("Start")
-    
-        # TODO make this cleaner
-        key = {1:"00:00", 2:"01:00",3:"02:00",4:"03:00", 5:"04:00",6:"05:00", 7:"06:00", 8:"07:00",9:"08:00",10:"09:00", 11:"10:00",12:"11:00", 13:"12:00", 14:"13:00",15:"14:00",16:"15:00",17:"16:00",18:"17:00", 19:"18:00", 20:"19:00",21:"20:00",22:"21:00", 23:"22:00",24:"23:00"}
-
         if start:
-            dates = df[df["Date"] == date_selected]
-            dates["Hr_End"] = [key[x] for x in dates["Hr_End"]]
-            dates["DateTime"] = pd.to_datetime(dates["Date"] + " "+  dates["Hr_End"], format= "%Y-%m-%d %H:%M")
-            
-            daily_ts_fig = px.line(dates,x="DateTime",y="RT_Demand",title=f"Hourly RT_Demand for {date_selected}")
+            dates = df[df["Date"] == date_selected.strftime('%Y-%m-%d')]
+            # NOTE: shifted end of hour to start of hour to ensure 24 hours remained in the same date 
+            dates['DateTime'] = pd.to_datetime(dates['Date']) + pd.to_timedelta(dates['Hr_End']-1, unit='h') 
+            daily_ts_fig = px.line(dates,x="DateTime",y="RT_Demand",title=f"Hourly RT_Demand for {date_selected.strftime('%m-%d-%Y')}")
             st.plotly_chart(daily_ts_fig)
             
 #     st.subheader("Charts")
