@@ -11,17 +11,13 @@ st.subheader("Forcasting real time energy demand")  # Header of the dashboard
 
 st.divider()
 
-st.sidebar.header("Load Datasets")
-file_uploaded = st.sidebar.file_uploader("Upload a file", type=["csv"])
-if file_uploaded is not None:
-    df = pd.read_csv(file_uploaded)
-else:
-    df = pd.read_csv("data/combined_data_hourly.csv")
-    # we just want to include the records from 2018 to 2025
-    df = df[df["Date"].between("2018-01-01", "2025-12-31")]
-    if "02X" in df["Hr_End"]:
-        df.drop(df.loc[df["Hr_End"].astype(str)=="02X"].index,inplace=True)
-    st.write(df["Hr_End"])
+
+df = pd.read_csv("data/combined_data_hourly.csv")
+# we just want to include the records from 2018 to 2025
+df = df[df["Date"].between("2018-01-01", "2025-12-31")]
+if "02X" in df["Hr_End"]:
+    df.drop(df.loc[df["Hr_End"].astype(str)=="02X"].index,inplace=True)
+st.write(df["Hr_End"])
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
     [
