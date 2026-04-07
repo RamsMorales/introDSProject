@@ -85,15 +85,39 @@ with tab3:  # key findings
     st.subheader("RT_Demand Shows seasonal behavior on Daily  and Yearly timescale")
 
     with st.expander("Daily resolution"):
-        date_selected = st.date_input("Choose a date to visualize",value="2018-01-01",min_value=MIN_DATE,max_value=MAX_DATE,key="Daily_Res") 
-        start = st.button("Start")
+        date_selected = st.date_input("Choose a date to visualize",
+                                                                value="2018-01-01",
+                                                                min_value=MIN_DATE,
+                                                                max_value=MAX_DATE,
+                                                                key="Daily_Res") 
+        start = st.button("Start", key="daily")
         if start:
             dates = df[df["Date"] == date_selected.strftime('%Y-%m-%d')]
             # NOTE: shifted end of hour to start of hour to ensure 24 hours remained in the same date 
             dates['DateTime'] = pd.to_datetime(dates['Date']) + pd.to_timedelta(dates['Hr_End']-1, unit='h') 
-            daily_ts_fig = px.line(dates,x="DateTime",y="RT_Demand",title=f"Hourly RT_Demand for {date_selected.strftime('%m-%d-%Y')}")
+            daily_ts_fig = px.line(dates,
+                                                x="DateTime",
+                                                y="RT_Demand",
+                                                title=f"Hourly RT_Demand for {date_selected.strftime('%m-%d-%Y')}"
+                                                )
             st.plotly_chart(daily_ts_fig)
+    with st.expander("Select a range of days to visualize"):
+        left_date, right_date = st.date_input("Choose a date range to visualize",
+                                                                value=("2018-01-01","2018-01-08"),
+                                                                min_value=MIN_DATE,
+                                                                max_value=MAX_DATE,
+                                                                key="Weekly_Res") 
+        start = st.button("Start", key= "weekly")
+        if start:
+            dates = df[df["Date"].between(left=left_date.strftime('%Y-%m-%d'),right=right_date.strftime('%Y-%m-%d'),inclusive="both")]
+            dates['DateTime'] = pd.to_datetime(dates['Date']) + pd.to_timedelta(dates['Hr_End']-1, unit='h') 
             
+            weekly_ts_fig = px.line(dates,
+                                                x="DateTime",
+                                                y="RT_Demand",
+                                                title=f"RT_Demand for {left_date.strftime('%m-%d-%Y')} to {right_date.strftime('%m-%d-%Y')}"
+                                                )
+            st.plotly_chart(weekly_ts_fig)
 #     st.subheader("Charts")
 #     with st.expander("Scatter Plot"):
 #         fig1 = px.scatter(df,
