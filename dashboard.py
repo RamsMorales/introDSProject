@@ -15,9 +15,9 @@ st.divider()
 df = pd.read_csv("data/combined_data_hourly.csv")
 # we just want to include the records from 2018 to 2025
 df = df[df["Date"].between("2018-01-01", "2025-12-31")]
-if "02X" in df["Hr_End"]:
+if "02X" in df["Hr_End"].values.astype(str):
+    st.write("True")
     df.drop(df.loc[df["Hr_End"].astype(str)=="02X"].index,inplace=True)
-st.write(df["Hr_End"])
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
     [
