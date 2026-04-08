@@ -3,6 +3,10 @@ import streamlit as st  # Streamlit library for web apps (dashboards for our dat
 import plotly.express as px  # Plotly Express for creating charts
 from statsmodels.tsa.stattools import adfuller, kpss
 from statsmodels.tsa.seasonal import seasonal_decompose
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import mean_absolute_error
+
 
 st.title("Final Project")  # Title of the dashboard
 st.header("Ramson Munoz & Valentina Kloster")  # Subtitle of the dashboard
@@ -165,19 +169,157 @@ with tab4: # hypothesis testing
         st.write("Assuming significance of 0.05, the p-value indicates that the data is stationary. "\
         " Meaning that there are no trends in the data over the yearly time span.")
 
-#with tab5: # ML forecast
-## Feature engineering
-### TODO introduce lags for random forrest
-df_lagged = df.copy()
-lag = 24 #hours
-df_lagged["RT_Demand-24"] = df_lagged["RT_Demand"].shift(lag)
-df_lagged= df_lagged.dropna()
-# Train test splitting. Testing on the last year of observations of RT_Demand
-test_data = df_lagged[df_lagged["Date"] > "2023-12-31"]
-training_data = df_lagged[df_lagged["Date"] < "2024-01-01"]
+with tab5:  # ML forecast
+    st.subheader("Random Forest Forecast")
+    st.write(
+        "We create a 24-hour lag feature, use time-series cross validation on the training set, "
+        "and choose the parameter combination with the lowest average MAE."
+    )
+    lag =24
+    df_lagged = df.copy()
+    # Build an hourly timestamp so the rows can be ordered correctly before creating lags.
+    # This is important because shift(24) means "24 rows earlier", so the dataframe must
+    # be in true time order for the lag to represent the same hour on the previous day.
+    df_lagged["DateTime"] = pd.to_datetime(df_lagged["Date"]) + pd.to_timedelta(
+        df_lagged["Hr_End"] - 1, unit="h"
+    )
+    df_lagged = df_lagged.sort_values("DateTime")
 
-### TODO Cross validation for param selection in the random forrest setup
+    # Use demand from the same hour one day earlier as the predictor.
+    df_lagged["RT_Demand-24"] = df_lagged["RT_Demand"].shift(lag)
+    # The first 24 rows have no previous-day value, so we remove them.
+    df_lagged = df_lagged.dropna()
 
-### TODO Plot of per fold metrics side by side column chart of validation error per fold vis RMSE, MAPE
+    # Train on data before 2024 and test on 2024 onward.
+    # This keeps the split chronological, which is required for time-series modeling.
+    training_data = df_lagged[df_lagged["Date"] < "2024-01-01"].copy()
+    test_data = df_lagged[df_lagged["Date"] >= "2024-01-01"].copy()
 
-### TODO FINAL CHART Test RMSE MAPE
+    # For now the model uses only one feature: yesterday's demand at the same hour.
+    X_train_full = training_data[["RT_Demand-24"]]
+    y_train_full = training_data["RT_Demand"]
+    X_test = test_data[["RT_Demand-24"]]
+    y_test = test_data["RT_Demand"]
+
+    st.markdown("**Training/Test Split**")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Training rows", f"{len(training_data):,}")
+    col2.metric("Test rows", f"{len(test_data):,}")
+    col3.metric("Lag used", f"{lag} hours")
+
+    # Parameter grid to try during cross validation.
+    # You can expand these lists later if you want a wider search.
+    n_splits = st.slider("Number of CV folds", min_value=3, max_value=8, value=5, step=1)
+    n_estimators_list = [100, 200, 300]
+    max_depth_list = [5, 10, 15, None]
+
+    # TimeSeriesSplit preserves time order:
+    # earlier data is used for training, later data for validation.
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    cv_results = []
+    best_mae = float("inf")
+    best_params = {}
+
+    # Try every parameter combination and compute validation MAE on each fold.
+    for n_estimators in n_estimators_list:
+        for max_depth in max_depth_list:
+            fold_maes = []
+
+            for fold_number, (train_index, val_index) in enumerate(tscv.split(X_train_full), start=1):
+                X_train = X_train_full.iloc[train_index]
+                X_val = X_train_full.iloc[val_index]
+                y_train = y_train_full.iloc[train_index]
+                y_val = y_train_full.iloc[val_index]
+
+                model = RandomForestRegressor(
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    random_state=42,
+                    n_jobs=-1,
+                )
+                model.fit(X_train, y_train)
+                y_pred = model.predict(X_val)
+                fold_mae = mean_absolute_error(y_val, y_pred)
+                fold_maes.append(fold_mae)
+
+                # Save each fold result so it can be shown later in Streamlit.
+                cv_results.append(
+                    {
+                        "n_estimators": n_estimators,
+                        "max_depth": "None" if max_depth is None else max_depth,
+                        "fold": fold_number,
+                        "mae": fold_mae,
+                    }
+                )
+
+            # Average the fold errors for this parameter combination.
+            avg_mae = sum(fold_maes) / len(fold_maes)
+            if avg_mae < best_mae:
+                best_mae = avg_mae
+                best_params = {"n_estimators": n_estimators, "max_depth": max_depth}
+
+    cv_results_df = pd.DataFrame(cv_results)
+    # Summarize one row per parameter combination for the table and chart.
+    summary_df = (
+        cv_results_df.groupby(["n_estimators", "max_depth"], as_index=False)["mae"]
+        .mean()
+        .rename(columns={"mae": "avg_mae"})
+        .sort_values("avg_mae")
+    )
+
+    st.markdown("**Cross Validation Results**")
+    st.dataframe(summary_df, use_container_width=True)
+
+    cv_chart = px.bar(
+        summary_df,
+        x="n_estimators", # n_estimators means number of trees in the random forest, which is a common parameter to tune for this model.
+        y="avg_mae", 
+        color="max_depth",
+        barmode="group",
+        title="Average MAE by Parameter Combination",
+        labels={"avg_mae": "Average MAE", "n_estimators": "Number of Trees", "max_depth": "Max Depth"},
+    )
+    st.plotly_chart(cv_chart, use_container_width=True)
+
+    st.markdown("**Best Parameters**")
+    st.write(
+        {
+            "n_estimators": best_params["n_estimators"],
+            "max_depth": "None" if best_params["max_depth"] is None else best_params["max_depth"],
+            "cv_mae": round(best_mae, 2),
+        }
+    )
+
+    # Refit the model on the full training set using the winning parameters.
+    final_model = RandomForestRegressor(
+        n_estimators=best_params["n_estimators"],
+        max_depth=best_params["max_depth"],
+        random_state=42,
+        n_jobs=-1,
+    )
+    final_model.fit(X_train_full, y_train_full)
+    test_predictions = final_model.predict(X_test)
+    test_mae = mean_absolute_error(y_test, test_predictions)
+
+    # Store actual and predicted values together for plotting.
+    predictions_df = test_data[["DateTime", "RT_Demand"]].copy()
+    predictions_df["Predicted_RT_Demand"] = test_predictions
+
+    st.markdown("**Test Set Performance**")
+    st.metric("Test MAE", f"{test_mae:,.2f}")
+
+    # Show only the first 14 test days so the chart stays readable.
+    forecast_chart = px.line(
+        predictions_df.head(24 * 14),
+        x="DateTime",
+        y=["RT_Demand", "Predicted_RT_Demand"],
+        title="Actual vs Predicted RT_Demand (First 14 Days of Test Set)",
+        labels={"value": "RT_Demand", "variable": "Series"},
+    )
+    st.plotly_chart(forecast_chart, use_container_width=True)
+
+
+### TODO Add more predictor columns, such as Hr_End, day of week, month, RT_Demand-48, and RT_Demand-168.
+### TODO Add RMSE and MAPE calculations alongside MAE for both validation and test performance.
+### TODO Create a per-fold comparison chart so you can compare fold metrics across parameter combinations.
+### TODO Add a final chart or metric cards that report test MAE, RMSE, and MAPE together.
