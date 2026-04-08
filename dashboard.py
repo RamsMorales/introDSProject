@@ -83,6 +83,7 @@ with tab2: # EDA
 
 with tab3:  # key findings
     ## Plot of daily resolution
+    # TODO: fix vanishing plot for comparison
     st.subheader("RT_Demand Shows seasonal behavior on Daily  and Yearly timescale")
 
     with st.expander("Daily Resolution"):
@@ -110,10 +111,10 @@ with tab3:  # key findings
                                                                 key="Weekly_Res") 
         start2  = st.button("Start", key= "weekly")
         if start2:
-            dates = df[df["Date"].between(left=left_date.strftime('%Y-%m-%d'),right=right_date.strftime('%Y-%m-%d'),inclusive="both")]
-            dates['DateTime'] = pd.to_datetime(dates['Date']) + pd.to_timedelta(dates['Hr_End']-1, unit='h') 
+            dates2 = df[df["Date"].between(left=left_date.strftime('%Y-%m-%d'),right=right_date.strftime('%Y-%m-%d'),inclusive="both")]
+            dates2['DateTime'] = pd.to_datetime(dates2['Date']) + pd.to_timedelta(dates2['Hr_End']-1, unit='h') 
             
-            weekly_ts_fig = px.line(dates,
+            weekly_ts_fig = px.line(dates2,
                                                 x="DateTime",
                                                 y="RT_Demand",
                                                 title=f"RT_Demand for {left_date.strftime('%m-%d-%Y')} to {right_date.strftime('%m-%d-%Y')}"
@@ -122,9 +123,9 @@ with tab3:  # key findings
             st.caption("Date ranges on shorter time scales reveal weekly seasonality in addtion to the daily seasonality evident in the previous figures.")
     with st.expander("Yearly Resolution"):
         selected_year = st.selectbox("Select a year to visualize",pd.to_datetime(df["Date"]).dt.year.unique())
-        dates = df[df["Date"].str.contains(str(selected_year))] 
+        dates3 = df[df["Date"].str.contains(str(selected_year))] 
 
-        yearly_RT_Demand_Smoothed = dates.groupby("Date")["RT_Demand"].mean().reset_index()
+        yearly_RT_Demand_Smoothed = dates3.groupby("Date")["RT_Demand"].mean().reset_index()
 
         yearly_ts_fig = px.line(yearly_RT_Demand_Smoothed,
                                             x="Date",
@@ -167,9 +168,14 @@ with tab4: # hypothesis testing
 #with tab5: # ML forecast
 ## Feature engineering
 ### TODO introduce lags for random forrest
-#df_lagged = df.copy()
-#lags = 24 #hours
- 
+df_lagged = df.copy()
+lag = 24 #hours
+df_lagged["RT_Demand-24"] = df_lagged["RT_Demand"].shift(lag)
+df_lagged= df_lagged.dropna()
+# Train test splitting. Testing on the last year of observations of RT_Demand
+test_data = df_lagged[df_lagged["Date"] > "2023-12-31"]
+training_data = df_lagged[df_lagged["Date"] < "2024-01-01"]
+
 ### TODO Cross validation for param selection in the random forrest setup
 
 ### TODO Plot of per fold metrics side by side column chart of validation error per fold vis RMSE, MAPE
