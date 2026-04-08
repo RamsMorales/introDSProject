@@ -1,11 +1,12 @@
 import pandas as pd  # Pandas for data manipulation
 import streamlit as st  # Streamlit library for web apps (dashboards for our data)
 import plotly.express as px  # Plotly Express for creating charts
+from math import sqrt
 from statsmodels.tsa.stattools import adfuller, kpss
 from statsmodels.tsa.seasonal import seasonal_decompose
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
-from sklearn.metrics import mean_absolute_error
 
 
 st.title("Final Project")  # Title of the dashboard
@@ -224,6 +225,8 @@ with tab5:  # ML forecast
     for n_estimators in n_estimators_list:
         for max_depth in max_depth_list:
             fold_maes = []
+            fold_rmses = []
+            fold_mapes = []
 
             for fold_number, (train_index, val_index) in enumerate(tscv.split(X_train_full), start=1):
                 X_train = X_train_full.iloc[train_index]
@@ -240,7 +243,11 @@ with tab5:  # ML forecast
                 model.fit(X_train, y_train)
                 y_pred = model.predict(X_val)
                 fold_mae = mean_absolute_error(y_val, y_pred)
+                fold_rmse = sqrt(mean_squared_error(y_val, y_pred))
+                fold_mape = mean_absolute_percentage_error(y_val, y_pred)
                 fold_maes.append(fold_mae)
+                fold_rmses.append(fold_rmse)
+                fold_mapes.append(fold_mape)
 
                 # Save each fold result so it can be shown later in Streamlit.
                 cv_results.append(
@@ -249,21 +256,31 @@ with tab5:  # ML forecast
                         "max_depth": "None" if max_depth is None else max_depth,
                         "fold": fold_number,
                         "mae": fold_mae,
+                        "rmse": fold_rmse,
+                        "mape": fold_mape * 100,
                     }
                 )
 
             # Average the fold errors for this parameter combination.
             avg_mae = sum(fold_maes) / len(fold_maes)
+            avg_rmse = sum(fold_rmses) / len(fold_rmses)
+            avg_mape = sum(fold_mapes) / len(fold_mapes)
             if avg_mae < best_mae:
                 best_mae = avg_mae
-                best_params = {"n_estimators": n_estimators, "max_depth": max_depth}
+                best_params = {
+                    "n_estimators": n_estimators,
+                    "max_depth": max_depth,
+                    "cv_mae": avg_mae,
+                    "cv_rmse": avg_rmse,
+                    "cv_mape": avg_mape * 100,
+                }
 
     cv_results_df = pd.DataFrame(cv_results)
     # Summarize one row per parameter combination for the table and chart.
     summary_df = (
-        cv_results_df.groupby(["n_estimators", "max_depth"], as_index=False)["mae"]
+        cv_results_df.groupby(["n_estimators", "max_depth"], as_index=False)[["mae", "rmse", "mape"]]
         .mean()
-        .rename(columns={"mae": "avg_mae"})
+        .rename(columns={"mae": "avg_mae", "rmse": "avg_rmse", "mape": "avg_mape"})
         .sort_values("avg_mae")
     )
 
@@ -286,7 +303,9 @@ with tab5:  # ML forecast
         {
             "n_estimators": best_params["n_estimators"],
             "max_depth": "None" if best_params["max_depth"] is None else best_params["max_depth"],
-            "cv_mae": round(best_mae, 2),
+            "cv_mae": round(best_params["cv_mae"], 2),
+            "cv_rmse": round(best_params["cv_rmse"], 2),
+            "cv_mape_percent": round(best_params["cv_mape"], 2),
         }
     )
 
@@ -300,13 +319,18 @@ with tab5:  # ML forecast
     final_model.fit(X_train_full, y_train_full)
     test_predictions = final_model.predict(X_test)
     test_mae = mean_absolute_error(y_test, test_predictions)
+    test_rmse = sqrt(mean_squared_error(y_test, test_predictions))
+    test_mape = mean_absolute_percentage_error(y_test, test_predictions) * 100
 
     # Store actual and predicted values together for plotting.
     predictions_df = test_data[["DateTime", "RT_Demand"]].copy()
     predictions_df["Predicted_RT_Demand"] = test_predictions
 
     st.markdown("**Test Set Performance**")
-    st.metric("Test MAE", f"{test_mae:,.2f}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Test MAE", f"{test_mae:,.2f}")
+    col2.metric("Test RMSE", f"{test_rmse:,.2f}")
+    col3.metric("Test MAPE", f"{test_mape:,.2f}%")
 
     # Show only the first 14 test days so the chart stays readable.
     forecast_chart = px.line(
@@ -317,10 +341,6 @@ with tab5:  # ML forecast
         labels={"value": "RT_Demand", "variable": "Series"},
     )
     st.plotly_chart(forecast_chart, use_container_width=True)
-
-
-### TODO Add RMSE and MAPE calculations alongside MAE for both validation and test performance.
-### TODO Add a final chart or metric cards that report test MAE, RMSE, and MAPE together.
 
 ### TODO Add an Interpretation of the Results section
 
