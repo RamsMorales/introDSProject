@@ -1,7 +1,7 @@
 import pandas as pd  # Pandas for data manipulation
 import streamlit as st  # Streamlit library for web apps (dashboards for our data)
 import plotly.express as px  # Plotly Express for creating charts
-import datetime
+from statsmodels.tsa.stattools import adfuller, kpss
 
 st.title("Final Project")  # Title of the dashboard
 st.header("Ramson Munoz & Valentina Kloster")  # Subtitle of the dashboard
@@ -101,7 +101,7 @@ with tab3:  # key findings
                                                 title=f"Hourly RT_Demand for {date_selected.strftime('%m-%d-%Y')}"
                                                 )
             st.plotly_chart(daily_ts_fig)
-    with st.expander("Select a range of days to visualize"):
+    with st.expander("Weekly Resolution"):
         left_date, right_date = st.date_input("Choose a date range to visualize",
                                                                 value=("2018-01-01","2018-01-08"),
                                                                 min_value=MIN_DATE,
@@ -133,9 +133,33 @@ with tab3:  # key findings
         st.plotly_chart(yearly_ts_fig)
         st.caption("Yearly plot reveals both monthly and yearly seasonality in RT_Demand")
 
-
-
-#     st.subheader("Charts")
+with tab4: # hypothesis testing
+    st.subheader("Is there Stationarity for hourly RT_Demand for the years 2018 through 2025?")
+    st.divider()
+    st.write("Our goal is to predict next day RT_Demand by hour using a Random Forrest Time series" \
+    " approach. In the Key Findings tab, we saw evidence of periodic behavior for RT demand" \
+    " on the hourly and yearly time scale, with weak evidence for periodic behavior for the weekly" \
+    " time scale. To examine the design of the feature lag variables, we will use the augmented Dickey" \
+    "-Fuller and the Kwiatkowski–Phillips–Schmidt–Shin test to check for trend stationarity. Although," \
+    " these test are not strictly necessary for random forrest, they do help us decide the lag differencing" \
+    " in the model.")
+    with st.container(border=True):
+        st.subheader("Dickey-Fuller test")
+        st.latex(r"\mathbf{H_0} :  \mathrm{The\ time\ series\ is\ non-stationarity\ i.e\ }  \exists \mathrm{\ a\ unit\ root} ")
+        st.latex(r"\mathbf{H_a} :  \mathrm{The\ time\ series\ is\ stationarity\ i.e\ }  \nexists \mathrm{\ a\ unit\ root} ")
+        adf_result = adfuller(df["RT_Demand"], autolag="AIC")
+        st.write(f"ADF Statistic: {adf_result[0]}")
+        st.write(f"p-value: {adf_result[1]}")
+        st.write("Assuming significance of 0.05, the p-value indicates that the data is stationary.")
+    
+    with st.container(border=True):
+        st.subheader("KPSS test")
+        st.latex(r"\mathbf{H_0} :  \mathrm{The\ time\ series\ is\ stationarity\ i.e\ }  \nexists \mathrm{\ a\ unit\ root} ")
+        st.latex(r"\mathbf{H_a} :  \mathrm{The\ time\ series\ is\ non-stationarity\ i.e\ }  \exists \mathrm{\ a\ unit\ root} ")
+        kpss_result = kpss(df["RT_Demand"], regression="c",nlags="auto")
+        st.write(f"KPSS Statistic: {kpss_result[0]}")
+        st.write(f"p-value: {kpss_result[1]}")
+        st.write("Assuming significance of 0.05, the p-value indicates that the data is stationary.")
 #     with st.expander("Scatter Plot"):
 #         fig1 = px.scatter(df,
 #                           x="Total Water Column (m)",
