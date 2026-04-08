@@ -2,6 +2,7 @@ import pandas as pd  # Pandas for data manipulation
 import streamlit as st  # Streamlit library for web apps (dashboards for our data)
 import plotly.express as px  # Plotly Express for creating charts
 from statsmodels.tsa.stattools import adfuller, kpss
+from statsmodels.tsa.seasonal import seasonal_decompose
 
 st.title("Final Project")  # Title of the dashboard
 st.header("Ramson Munoz & Valentina Kloster")  # Subtitle of the dashboard
@@ -107,8 +108,8 @@ with tab3:  # key findings
                                                                 min_value=MIN_DATE,
                                                                 max_value=MAX_DATE,
                                                                 key="Weekly_Res") 
-        start = st.button("Start", key= "weekly")
-        if start:
+        start2  = st.button("Start", key= "weekly")
+        if start2:
             dates = df[df["Date"].between(left=left_date.strftime('%Y-%m-%d'),right=right_date.strftime('%Y-%m-%d'),inclusive="both")]
             dates['DateTime'] = pd.to_datetime(dates['Date']) + pd.to_timedelta(dates['Hr_End']-1, unit='h') 
             
@@ -162,6 +163,9 @@ with tab4: # hypothesis testing
         st.write(f"p-value: {kpss_result[1]}")
         st.write("Assuming significance of 0.05, the p-value indicates that the data is stationary. "\
         " Meaning that there are no trends in the data over the yearly time span.")
+
+        # TODO: add seasonality testing
+
 #     with st.expander("Scatter Plot"):
 #         fig1 = px.scatter(df,
 #                           x="Total Water Column (m)",
@@ -229,13 +233,12 @@ with tab4: # hypothesis testing
 #     st.plotly_chart(fig4)
 #     st.caption("Hover over the points to see more details")
 
-# # TODO: add more charts, such as
-# # box plots, histograms, and heatmaps for correlation (as seen in last week's class)
-
-#  with tab5: # ML forecast
+#with tab5: # ML forecast
 ## Feature engineering
 ### TODO introduce lags for random forrest
-
+#df_lagged = df.copy()
+#lags = 24 #hours
+ 
 ### TODO Cross validation for param selection in the random forrest setup
 
 ### TODO Plot of per fold metrics side by side column chart of validation error per fold vis RMSE, MAPE
