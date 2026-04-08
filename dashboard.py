@@ -193,3 +193,7 @@ training_data = df_lagged[df_lagged["Date"] < "2024-01-01"]
 ### TODO Plot of per fold metrics side by side column chart of validation error per fold vis RMSE, MAPE
 
 ### TODO FINAL CHART Test RMSE MAPE
+
+### TODO Add an Interpretation of the Results section
+
+### TODO Add an Improvements and Next Steps section: here we can say that to improve the model, we would add more features such as day of week, month, and additional lags. We could also try other models such as XGBoost or LSTM neural networks. Additionally, we could expand the hyperparameter search to include more values and parameters.
