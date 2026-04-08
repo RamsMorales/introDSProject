@@ -3,6 +3,7 @@ import streamlit as st  # Streamlit library for web apps (dashboards for our dat
 import plotly.express as px  # Plotly Express for creating charts
 from statsmodels.tsa.stattools import adfuller, kpss
 from statsmodels.tsa.seasonal import seasonal_decompose
+import matplotlib.pyplot as plt
 
 st.title("Final Project")  # Title of the dashboard
 st.header("Ramson Munoz & Valentina Kloster")  # Subtitle of the dashboard
@@ -164,10 +165,16 @@ with tab4: # hypothesis testing
         st.write(f"p-value: {kpss_result[1]}")
         st.write("Assuming significance of 0.05, the p-value indicates that the data is stationary. "\
         " Meaning that there are no trends in the data over the yearly time span.")
+    st.divider()
+    st.write("The results indicate that trends are not present in the data, but our plots indicate a " \
+    "seasonal pattern which may be important for determining our lags. To address this, we will " \
+    "decompose the data to examine the patterns.")
+    decomposition = seasonal_decompose(df["RT_Demand"],model="additive",period=24)
+    st.pyplot(decomposition.plot())
+
 
 #with tab5: # ML forecast
 ## Feature engineering
-### TODO introduce lags for random forrest
 df_lagged = df.copy()
 lag = 24 #hours
 df_lagged["RT_Demand-24"] = df_lagged["RT_Demand"].shift(lag)
