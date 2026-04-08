@@ -150,7 +150,8 @@ with tab4: # hypothesis testing
         adf_result = adfuller(df["RT_Demand"], autolag="AIC")
         st.write(f"ADF Statistic: {adf_result[0]}")
         st.write(f"p-value: {adf_result[1]}")
-        st.write("Assuming significance of 0.05, the p-value indicates that the data is stationary.")
+        st.write("Assuming significance of 0.05, the p-value indicates that the data is stationary." \
+        " Meaning that there are no trends in the data over the yearly time span.")
     
     with st.container(border=True):
         st.subheader("KPSS test")
@@ -159,7 +160,8 @@ with tab4: # hypothesis testing
         kpss_result = kpss(df["RT_Demand"], regression="c",nlags="auto")
         st.write(f"KPSS Statistic: {kpss_result[0]}")
         st.write(f"p-value: {kpss_result[1]}")
-        st.write("Assuming significance of 0.05, the p-value indicates that the data is stationary.")
+        st.write("Assuming significance of 0.05, the p-value indicates that the data is stationary. "\
+        " Meaning that there are no trends in the data over the yearly time span.")
 #     with st.expander("Scatter Plot"):
 #         fig1 = px.scatter(df,
 #                           x="Total Water Column (m)",
