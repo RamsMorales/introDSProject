@@ -84,7 +84,7 @@ with tab3:  # key findings
     ## Plot of daily resolution
     st.subheader("RT_Demand Shows seasonal behavior on Daily  and Yearly timescale")
 
-    with st.expander("Daily resolution"):
+    with st.expander("Daily Resolution"):
         date_selected = st.date_input("Choose a date to visualize",
                                                                 value="2018-01-01",
                                                                 min_value=MIN_DATE,
@@ -118,6 +118,23 @@ with tab3:  # key findings
                                                 title=f"RT_Demand for {left_date.strftime('%m-%d-%Y')} to {right_date.strftime('%m-%d-%Y')}"
                                                 )
             st.plotly_chart(weekly_ts_fig)
+            st.caption("Date ranges on shorter time scales reveal weekly seasonality in addtion to the daily seasonality evident in the previous figures.")
+    with st.expander("Yearly Resolution"):
+        selected_year = st.selectbox("Select a year to visualize",pd.to_datetime(df["Date"]).dt.year.unique())
+        dates = df[df["Date"].str.contains(str(selected_year))] 
+
+        yearly_RT_Demand_Smoothed = dates.groupby("Date")["RT_Demand"].mean().reset_index()
+
+        yearly_ts_fig = px.line(yearly_RT_Demand_Smoothed,
+                                            x="Date",
+                                            y="RT_Demand",
+                                            title=f"Average daily RT_Demand for {selected_year}"
+                                            )
+        st.plotly_chart(yearly_ts_fig)
+        st.caption("Yearly plot reveals both monthly and yearly seasonality in RT_Demand")
+
+
+
 #     st.subheader("Charts")
 #     with st.expander("Scatter Plot"):
 #         fig1 = px.scatter(df,
