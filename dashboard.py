@@ -319,7 +319,9 @@ with tab5:  # ML forecast
     st.plotly_chart(forecast_chart, use_container_width=True)
 
 
-### TODO Add more predictor columns, such as Hr_End, day of week, month, RT_Demand-48, and RT_Demand-168.
 ### TODO Add RMSE and MAPE calculations alongside MAE for both validation and test performance.
-### TODO Create a per-fold comparison chart so you can compare fold metrics across parameter combinations.
 ### TODO Add a final chart or metric cards that report test MAE, RMSE, and MAPE together.
+
+### TODO Add an Interpretation of the Results section
+
+### TODO Add an Improvements and Next Steps section: here we can say that to improve the model, we would add more features such as day of week, month, and additional lags. We could also try other models such as XGBoost or LSTM neural networks. Additionally, we could expand the hyperparameter search to include more values and parameters.
