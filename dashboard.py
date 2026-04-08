@@ -3,6 +3,10 @@ import streamlit as st  # Streamlit library for web apps (dashboards for our dat
 import plotly.express as px  # Plotly Express for creating charts
 from statsmodels.tsa.stattools import adfuller, kpss
 from statsmodels.tsa.seasonal import seasonal_decompose
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import mean_absolute_error
+
 import matplotlib.pyplot as plt
 
 st.title("Final Project")  # Title of the dashboard
@@ -175,6 +179,7 @@ with tab4: # hypothesis testing
 
 #with tab5: # ML forecast
 ## Feature engineering
+### TODO introduce lags for random forrest
 df_lagged = df.copy()
 lag = 24 #hours
 df_lagged["RT_Demand-24"] = df_lagged["RT_Demand"].shift(lag)
