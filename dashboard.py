@@ -2,8 +2,8 @@ import pandas as pd  # Pandas for data manipulation
 import streamlit as st  # Streamlit library for web apps (dashboards for our data)
 import plotly.express as px  # Plotly Express for creating charts
 from math import sqrt
-from statsmodels.tsa.stattools import adfuller, kpss
-from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.stattools import adfuller
+from pmdarima.arima.utils  import nsdiffs 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
@@ -142,17 +142,18 @@ with tab3:  # key findings
         st.caption("Yearly plot reveals both monthly and yearly seasonality in RT_Demand")
 
 with tab4: # hypothesis testing
+    ## TODO: remove autolag for hypothesis testing and specify relative question. Consider checking on the yearly, hourly, and weekly time scale
     st.subheader("Is there Stationarity for hourly RT_Demand for the years 2018 through 2025?")
     st.divider()
     st.write("Our goal is to predict next day RT_Demand by hour using a Random Forrest Time series" \
     " approach. In the Key Findings tab, we saw evidence of periodic behavior for RT demand" \
     " on the hourly and yearly time scale, with weak evidence for periodic behavior for the weekly" \
-    " time scale. To examine the design of the feature lag variables, we will use the augmented Dickey" \
-    "-Fuller and the Kwiatkowski–Phillips–Schmidt–Shin test to check for trend stationarity. Although," \
-    " these test are not strictly necessary for random forrest, they do help us decide the lag differencing" \
-    " in the model.")
+    " time scale. To examine the design of the feature lag variables and differencing, we will use the " \
+    "Augmented Dickey-Fuller test to check for trend stationarity and the OCSB test to check for seasonal "
+    " differencing. Although, these test are not strictly necessary for random forrest, they do help us " \
+    "decide the lag differencing in the model.")
     with st.container(border=True):
-        st.subheader("Dickey-Fuller test")
+        st.subheader("Dickey-Fuller test to test for trends")
         st.latex(r"\mathbf{H_0} :  \mathrm{The\ time\ series\ is\ non-stationarity\ i.e\ }  \exists \mathrm{\ a\ unit\ root} ")
         st.latex(r"\mathbf{H_a} :  \mathrm{The\ time\ series\ is\ stationarity\ i.e\ }  \nexists \mathrm{\ a\ unit\ root} ")
         adf_result = adfuller(df["RT_Demand"], autolag="AIC")
@@ -160,31 +161,28 @@ with tab4: # hypothesis testing
         st.write(f"p-value: {adf_result[1]}")
         st.write("Assuming significance of 0.05, the p-value indicates that the data is stationary." \
         " Meaning that there are no trends in the data over the yearly time span.")
-    
-    with st.container(border=True):
-        st.subheader("KPSS test")
-        st.latex(r"\mathbf{H_0} :  \mathrm{The\ time\ series\ is\ stationarity\ i.e\ }  \nexists \mathrm{\ a\ unit\ root} ")
-        st.latex(r"\mathbf{H_a} :  \mathrm{The\ time\ series\ is\ non-stationarity\ i.e\ }  \exists \mathrm{\ a\ unit\ root} ")
-        kpss_result = kpss(df["RT_Demand"], regression="c",nlags="auto")
-        st.write(f"KPSS Statistic: {kpss_result[0]}")
-        st.write(f"p-value: {kpss_result[1]}")
-        st.write("Assuming significance of 0.05, the p-value indicates that the data is stationary. "\
-        " Meaning that there are no trends in the data over the yearly time span.")
-    
-    st.divider()
-    st.write("The results indicate that trends are not present in the data, but our plots indicate a " \
-    "seasonal pattern which may be important for determining our lags. To address this, we will " \
-    "decompose the data to examine the patterns.")
-    decomposition = seasonal_decompose(df["RT_Demand"],model="additive",period=24)
-    st.pyplot(decomposition.plot())
 
+    with st.container(border=True):
+        st.subheader("OCSB to check for seasonal differencing")
+        st.write("The results indicate that trends are not present in the data, but our plots indicate a " \
+        "seasonal pattern which may be important for determining our lags. We want to check whether" \
+        " this seasonal pattern is stochastic or deterministic to see if seasonal differencing is needed for our model" \
+        " or if  introducing a lag variable is sufficient. To address this, we will " \
+        "consider an ocsb test to determine the lab periods for the features.")
+        st.write("The following test indicates if the stated lag period is necessary")
+        st.write(f"Daily lag period - {nsdiffs(df["RT_Demand"],m=24,test="ocsb")}")
+        st.write(f"Weekly lag period - {nsdiffs(df["RT_Demand"],m=168 ,test="ocsb")}")
+        st.write(f"Yearly lag period - {nsdiffs(df["RT_Demand"],m=8760,test="ocsb")}")
+        st.write("Since the daily, weekly, and yearly periods return 0 on the ocsb test, we do not need " \
+        "differencing. A lag should suffice to capture the periodic behavior in the data.")
 with tab5:  # ML forecast
     st.subheader("Random Forest Forecast")
     st.write(
-        "We create a 24-hour lag feature, use time-series cross validation on the training set, "
-        "and choose the parameter combination with the lowest average MAE."
+        "We create a 24-hour, 168-hour (weekly), and use time-series cross validation on the training set." \
+        " Addtionally, a Month feature is added to capture yearly fluctuations. "\
+        "Finally, choose the parameter combination with the lowest average MAE."
     )
-    lag =24
+    lags =[24, 168]
     df_lagged = df.copy()
     # Build an hourly timestamp so the rows can be ordered correctly before creating lags.
     # This is important because shift(24) means "24 rows earlier", so the dataframe must
@@ -195,10 +193,13 @@ with tab5:  # ML forecast
     df_lagged = df_lagged.sort_values("DateTime")
 
     # Use demand from the same hour one day earlier as the predictor.
-    df_lagged["RT_Demand-24"] = df_lagged["RT_Demand"].shift(lag)
-    # The first 24 rows have no previous-day value, so we remove them.
+    for lag in lags:
+        df_lagged[f"RT_Demand-{lag}"] = df_lagged["RT_Demand"].shift(lag)
+   
+    # Adding month for yearly periodicity
+    df_lagged["Month"] = df_lagged["DateTime"].dt.month
+    # The first  168 rows have no previous-day value, so we remove them.
     df_lagged = df_lagged.dropna()
-
     # Train on data before 2024 and test on 2024 onward.
     # This keeps the split chronological, which is required for time-series modeling.
     training_data = df_lagged[df_lagged["Date"] < "2024-01-01"].copy()
