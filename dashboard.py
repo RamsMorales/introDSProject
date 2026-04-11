@@ -7,6 +7,7 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
+from scipy import stats  # For t-test (hypothesis testing)
 
 import matplotlib.pyplot as plt
 
@@ -19,18 +20,21 @@ st.subheader("Forcasting real time energy demand")  # Header of the dashboard
 st.divider()
 
 
-df = pd.read_csv("data/combined_data_hourly.csv")
-# we just want to include the records from 2018 to 2025
 MIN_DATE = "2018-01-01"
 MAX_DATE= "2025-12-31"
-df = df[df["Date"].between(MIN_DATE, MAX_DATE)]
-## Dropping duplicates
-if "02X" in df["Hr_End"].values.astype(str):
-    #st.write("True")
-    df.drop(df.loc[df["Hr_End"].astype(str)=="02X"].index,inplace=True)
 
-## Converting HR_End variable to numeric to make Date_Time feature for time series
-df["Hr_End"] = df["Hr_End"].astype(int)
+@st.cache_data  # Cache so the CSV is read only once; reruns use the in-memory copy
+def load_data():
+    df = pd.read_csv("data/combined_data_hourly.csv", low_memory=False)
+    df = df[df["Date"].between(MIN_DATE, MAX_DATE)]
+    ## Dropping duplicates (daylight-saving "02X" hour)
+    if "02X" in df["Hr_End"].values.astype(str):
+        df.drop(df.loc[df["Hr_End"].astype(str)=="02X"].index, inplace=True)
+    ## Converting HR_End variable to numeric to make Date_Time feature for time series
+    df["Hr_End"] = df["Hr_End"].astype(int)
+    return df
+
+df = load_data()
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
     [
@@ -76,7 +80,7 @@ with tab2: # EDA
             with col2:
                 fig2 = px.histogram(df,
                                     x=parameter_selected2,
-                                    nbins=3,
+                                    nbins=50,
                                     title=f"Histogram of {parameter_selected2}")
                 st.plotly_chart(fig2)
 
@@ -177,6 +181,57 @@ with tab4: # hypothesis testing
     "decompose the data to examine the patterns.")
     decomposition = seasonal_decompose(df["RT_Demand"],model="additive",period=24)
     st.pyplot(decomposition.plot())
+    st.divider()
+    # ── Two-Sample Independent t-test ─────────────────────────────────────────
+    st.subheader("Bonus: t-test — Does Summer Demand Significantly Differ from Winter?")
+    st.write(
+        "Seasonal decomposition confirms a yearly cycle in RT_Demand. "
+        "We use an independent two-sample t-test to statistically verify that "
+        "summer (June–August) and winter (December–February) mean hourly demand are different."
+    )
+    with st.container(border=True):
+        st.latex(r"\mathbf{H_0} : \mu_{\text{summer}} = \mu_{\text{winter}}")
+        st.latex(r"\mathbf{H_a} : \mu_{\text{summer}} \neq \mu_{\text{winter}}")
+
+        df_ttest = df.copy()
+        df_ttest["Month"] = pd.to_datetime(df_ttest["Date"]).dt.month
+        summer = df_ttest[df_ttest["Month"].isin([6, 7, 8])]["RT_Demand"]
+        winter = df_ttest[df_ttest["Month"].isin([12, 1, 2])]["RT_Demand"]
+
+        t_stat, p_value = stats.ttest_ind(summer, winter, equal_var=False)  # Welch's t-test
+        alpha = 0.05
+
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("Summer Mean (MW)", f"{summer.mean():,.1f}")
+        col_b.metric("Winter Mean (MW)", f"{winter.mean():,.1f}")
+        col_c.metric("Difference (MW)", f"{summer.mean() - winter.mean():,.1f}")
+
+        st.write(f"**t-statistic:** {t_stat:.4f}")
+        st.write(f"**p-value:** {p_value:.2e}")
+
+        if p_value < alpha:
+            st.success(
+                f"p-value ({p_value:.2e}) < α (0.05) → **Reject H₀**. "
+                "There is a statistically significant difference in mean hourly RT_Demand "
+                "between summer and winter. Summer demand is on average "
+                f"{summer.mean() - winter.mean():,.0f} MW higher, driven by air-conditioning load."
+            )
+        else:
+            st.info("p-value ≥ α (0.05) → Fail to reject H₀.")
+
+        # Visual comparison
+        import plotly.graph_objects as go
+        fig_ttest = go.Figure()
+        fig_ttest.add_trace(go.Histogram(x=summer, name="Summer (Jun–Aug)", opacity=0.65, nbinsx=60))
+        fig_ttest.add_trace(go.Histogram(x=winter, name="Winter (Dec–Feb)", opacity=0.65, nbinsx=60))
+        fig_ttest.update_layout(
+            barmode="overlay",
+            title="RT_Demand Distribution: Summer vs. Winter",
+            xaxis_title="RT_Demand (MW)",
+            yaxis_title="Count",
+        )
+        st.plotly_chart(fig_ttest, use_container_width=True)
+
 
 with tab5:  # ML forecast
     st.subheader("Random Forest Forecast")
@@ -349,9 +404,78 @@ with tab5:  # ML forecast
     )
     st.plotly_chart(forecast_chart, use_container_width=True)
 
+    # Interpretation of the Results
+    st.divider()
+    st.subheader("Interpretation of the Results")
+    st.write(
+        "Overall we are pretty satisfied with how the model performed given how simple it is. "
+        "We used only one feature, which is the RT_Demand from the same hour the previous day "
+        "(the 24-hour lag), and trained on 2018 through 2023 before evaluating on the fully "
+        "held-out 2024 and 2025 data."
+    )
+    with st.container(border=True):
+        st.markdown("**What the metrics are actually telling us**")
+        st.write(
+            "MAE (Mean Absolute Error) is probably the easiest metric to interpret here: it tells "
+            "us how far off the model is on average in megawatts. Since average RT_Demand hovers "
+            "around 2,700 MW, an MAE in the 80 to 130 MW range means the model is typically within "
+            "about 3 to 5 percent of the actual value, which is what the MAPE confirms. "
+            "RMSE penalizes larger errors more heavily than MAE does, so when RMSE is close to MAE "
+            "it means the model is not making a lot of very bad predictions on specific hours. "
+            "The thing we paid most attention to is that the cross-validation MAE and the test MAE "
+            "are in the same ballpark. If the test error had been much worse than CV, that would "
+            "have been a sign of overfitting to the training years, but that does not appear to "
+            "be happening here."
+        )
+    with st.container(border=True):
+        st.markdown("**How this connects back to the hypothesis tests and EDA**")
+        st.write(
+            "The stationarity tests (ADF and KPSS) both pointed to the same conclusion: RT_Demand "
+            "does not have a long-run trend, so we did not need to difference the series before "
+            "modeling. That is part of why a simple lag works as well as it does. The t-test "
+            "showed that summer demand is about 270 MW higher than winter demand on average, and "
+            "the 24-hour lag picks that up implicitly because yesterday's demand at the same hour "
+            "is already a summer or winter value depending on the time of year."
+        )
+    with st.container(border=True):
+        st.markdown("**Where the model struggles**")
+        st.write(
+            "The main limitation is that we only gave the model one input. On a normal day it does "
+            "well, but on days where demand deviates significantly from the day before, like during "
+            "a sudden cold snap, a heat wave, or a major holiday, the model has no way of knowing "
+            "that anything unusual is happening. You can see this in the forecast chart if you look "
+            "at the days where the predicted line and the actual line diverge the most. Those tend "
+            "to be the interesting days from a grid operator's perspective, which is exactly when "
+            "you need the forecast to be reliable."
+        )
 
-### TODO Add an Interpretation of the Results section
-
-### TODO Add an Improvements and Next Steps section: here we can say that to improve the model, we would add more features such as day of week, month, and additional lags. We could also try other models such as XGBoost or LSTM neural networks. Additionally, we could expand the hyperparameter search to include more values and parameters.
-
-### TODO Create the report and a README file to explain how to run the code and summarize the results.
+    # Improvements and Next Steps
+    st.divider()
+    st.subheader("Improvements and Next Steps")
+    col_imp1, col_imp2 = st.columns(2)
+    with col_imp1:
+        st.markdown("**Features we would add first**")
+        st.write(
+            "The biggest gain would probably come from adding weather variables. Dry_Bulb "
+            "temperature and Dew_Point are already in our dataset and we know from the correlation "
+            "heatmap that temperature is moderately correlated with demand. On a hot humid day "
+            "those two columns alone would give the model a much better signal than the lag. "
+            "We would also add a 168-hour lag (the same hour one week earlier) to capture the "
+            "weekly pattern we saw in the Key Findings tab, plus simple calendar features like "
+            "day of week, month, and a flag for public holidays. None of these require external "
+            "data, they are all derivable from what we already have."
+        )
+    with col_imp2:
+        st.markdown("**Modeling improvements worth trying**")
+        st.write(
+            "With more features in play, it would make sense to try XGBoost or LightGBM. They "
+            "tend to train faster than Random Forest and often do better on tabular data once the "
+            "feature set grows. For a more ambitious version of this project, an LSTM network "
+            "could learn the daily and yearly seasonality directly from the sequence without "
+            "needing us to engineer lag features manually. We would also want to expand the "
+            "hyperparameter search a bit, particularly by trying different values for "
+            "min_samples_leaf and max_features which we did not tune here. Finally, adding "
+            "prediction intervals to the output would make the forecasts more useful in practice, "
+            "since knowing the uncertainty around a prediction matters just as much as the "
+            "prediction itself when you are managing a power grid."
+        )
