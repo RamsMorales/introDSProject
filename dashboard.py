@@ -2,8 +2,8 @@ import pandas as pd  # Pandas for data manipulation
 import streamlit as st  # Streamlit library for web apps (dashboards for our data)
 import plotly.express as px  # Plotly Express for creating charts
 from math import sqrt
-from statsmodels.tsa.stattools import adfuller
-from pmdarima.arima.utils  import nsdiffs 
+from statsmodels.tsa.stattools import adfuller, kpss
+from statsmodels.tsa.seasonal import seasonal_decompose
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
@@ -214,16 +214,16 @@ with tab5:  # ML forecast
     test_data = df_lagged[df_lagged["Date"] >= "2024-01-01"].copy()
 
     # For now the model uses only one feature: yesterday's demand at the same hour.
-    X_train_full = training_data[["RT_Demand-24"]]
+    X_train_full = training_data[["RT_Demand-24", "RT_Demand-168", "Month"]]
     y_train_full = training_data["RT_Demand"]
-    X_test = test_data[["RT_Demand-24"]]
+    X_test = test_data[["RT_Demand-24", "RT_Demand-168", "Month"]]
     y_test = test_data["RT_Demand"]
 
     st.markdown("**Training/Test Split**")
     col1, col2, col3 = st.columns(3)
     col1.metric("Training rows", f"{len(training_data):,}")
     col2.metric("Test rows", f"{len(test_data):,}")
-    col3.metric("Lag used", f"{lag} hours")
+    col3.metric("Lags used", "24h & 168h")
 
     # Parameter grid to try during cross validation.
     # You can expand these lists later if you want a wider search.
