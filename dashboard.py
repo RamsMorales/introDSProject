@@ -362,9 +362,10 @@ with tab5:  # ML forecast
     st.divider()
     st.subheader("Interpretation of the Results")
     st.write(
-        "Overall we are pretty satisfied with how the model performed given how simple it is. "
-        "We used only one feature, which is the RT_Demand from the same hour the previous day "
-        "(the 24-hour lag), and trained on 2018 through 2023 before evaluating on the fully "
+        "Overall we are pretty satisfied with how the model performed. We used three features: "
+        "the RT_Demand from the same hour the previous day (24-hour lag), the RT_Demand from "
+        "the same hour one week earlier (168-hour lag), and a Month variable to capture yearly "
+        "fluctuations. The model was trained on 2018 through 2023 and evaluated on the fully "
         "held-out 2024 and 2025 data."
     )
     with st.container(border=True):
@@ -386,21 +387,22 @@ with tab5:  # ML forecast
         st.write(
             "The stationarity tests (ADF and KPSS) both pointed to the same conclusion: RT_Demand "
             "does not have a long-run trend, so we did not need to difference the series before "
-            "modeling. That is part of why a simple lag works as well as it does. The t-test "
+            "modeling. That is part of why lag-based features work as well as they do. The t-test "
             "showed that summer demand is about 270 MW higher than winter demand on average, and "
-            "the 24-hour lag picks that up implicitly because yesterday's demand at the same hour "
-            "is already a summer or winter value depending on the time of year."
+            "the Month feature directly captures this by telling the model what time of year it is. "
+            "The 24-hour lag handles the daily pattern and the 168-hour lag picks up the weekly "
+            "rhythm we saw in the Key Findings tab."
         )
     with st.container(border=True):
-        st.markdown("**Where the model struggles**")
+        st.markdown("**Where the model still struggles**")
         st.write(
-            "The main limitation is that we only gave the model one input. On a normal day it does "
-            "well, but on days where demand deviates significantly from the day before, like during "
-            "a sudden cold snap, a heat wave, or a major holiday, the model has no way of knowing "
-            "that anything unusual is happening. You can see this in the forecast chart if you look "
-            "at the days where the predicted line and the actual line diverge the most. Those tend "
-            "to be the interesting days from a grid operator's perspective, which is exactly when "
-            "you need the forecast to be reliable."
+            "Even with three features, the model has no way to anticipate sudden demand deviations "
+            "caused by extreme weather events or major holidays. If last week and yesterday were "
+            "both normal days but today is an unexpected heat wave, the lags and month will not "
+            "capture that spike. You can see this in the forecast chart when the predicted line "
+            "and the actual line diverge the most. Those tend to be the most operationally "
+            "important days from a grid perspective, which is exactly when you need the forecast "
+            "to be reliable."
         )
 
     # Improvements and Next Steps
@@ -408,21 +410,22 @@ with tab5:  # ML forecast
     st.subheader("Improvements and Next Steps")
     col_imp1, col_imp2 = st.columns(2)
     with col_imp1:
-        st.markdown("**Features we would add first**")
+        st.markdown("**Features we would add next**")
         st.write(
-            "The biggest gain would probably come from adding weather variables. Dry_Bulb "
-            "temperature and Dew_Point are already in our dataset and we know from the correlation "
-            "heatmap that temperature is moderately correlated with demand. On a hot humid day "
-            "those two columns alone would give the model a much better signal than the lag. "
-            "We would also add a 168-hour lag (the same hour one week earlier) to capture the "
-            "weekly pattern we saw in the Key Findings tab, plus simple calendar features like "
-            "day of week, month, and a flag for public holidays. None of these require external "
-            "data, they are all derivable from what we already have."
+            "The most impactful addition would be weather variables. Dry_Bulb temperature and "
+            "Dew_Point are already in the dataset and we know from the correlation heatmap that "
+            "temperature is moderately correlated with demand. On a hot humid day those two columns "
+            "alone would give the model a much better signal for peak demand hours. We would also "
+            "add a day-of-week feature and a public holiday flag, since the weekly pattern in the "
+            "Key Findings tab shows that weekends are consistently lower than weekdays and the "
+            "current model has no way to know what day it is. Day-Ahead demand (DA_Demand) is "
+            "another strong candidate since market participants already forecast it and it is "
+            "highly correlated with RT_Demand."
         )
     with col_imp2:
         st.markdown("**Modeling improvements worth trying**")
         st.write(
-            "With more features in play, it would make sense to try XGBoost or LightGBM. They "
+            "With a richer feature set, it would make sense to try XGBoost or LightGBM. They "
             "tend to train faster than Random Forest and often do better on tabular data once the "
             "feature set grows. For a more ambitious version of this project, an LSTM network "
             "could learn the daily and yearly seasonality directly from the sequence without "
