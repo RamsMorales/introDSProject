@@ -142,7 +142,6 @@ with tab3:  # key findings
         st.caption("Yearly plot reveals both monthly and yearly seasonality in RT_Demand")
 
 with tab4: # hypothesis testing
-    ## TODO: remove autolag for hypothesis testing and specify relative question. Consider checking on the yearly, hourly, and weekly time scale
     st.subheader("Is there Stationarity for hourly RT_Demand for the years 2018 through 2025?")
     st.divider()
     st.write("Our goal is to predict next day RT_Demand by hour using a Random Forrest Time series" \
@@ -175,6 +174,7 @@ with tab4: # hypothesis testing
         st.write(f"Yearly lag period - {nsdiffs(df["RT_Demand"],m=8760,test="ocsb")}")
         st.write("Since the daily, weekly, and yearly periods return 0 on the ocsb test, we do not need " \
         "differencing. A lag should suffice to capture the periodic behavior in the data.")
+
 with tab5:  # ML forecast
     st.subheader("Random Forest Forecast")
     st.write(
@@ -182,7 +182,7 @@ with tab5:  # ML forecast
         " Addtionally, a Month feature is added to capture yearly fluctuations. "\
         "Finally, choose the parameter combination with the lowest average MAE."
     )
-    lags =[24, 168]
+    lags =[24, 48, 168]
     df_lagged = df.copy()
     # Build an hourly timestamp so the rows can be ordered correctly before creating lags.
     # This is important because shift(24) means "24 rows earlier", so the dataframe must
@@ -202,27 +202,30 @@ with tab5:  # ML forecast
     df_lagged = df_lagged.dropna()
     # Train on data before 2024 and test on 2024 onward.
     # This keeps the split chronological, which is required for time-series modeling.
-    training_data = df_lagged[df_lagged["Date"] < "2024-01-01"].copy()
-    test_data = df_lagged[df_lagged["Date"] >= "2024-01-01"].copy()
+    # training_data = df_lagged[df_lagged["Date"] < "2024-01-01"].copy()
+    # test_data = df_lagged[df_lagged["Date"] >= "2024-01-01"].copy()
 
     # For now the model uses only one feature: yesterday's demand at the same hour.
-    X_train_full = training_data[["RT_Demand-24"]]
-    y_train_full = training_data["RT_Demand"]
-    X_test = test_data[["RT_Demand-24"]]
-    y_test = test_data["RT_Demand"]
+    # X_train_full = training_data[["RT_Demand-24"]]
+    # y_train_full = training_data["RT_Demand"]
+    # X_test = test_data[["RT_Demand-24"]]
+    # y_test = test_data["RT_Demand"]
 
-    st.markdown("**Training/Test Split**")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Training rows", f"{len(training_data):,}")
-    col2.metric("Test rows", f"{len(test_data):,}")
-    col3.metric("Lag used", f"{lag} hours")
+    # st.markdown("**Training/Test Split**")
+    # col1, col2, col3 = st.columns(3)
+    # col1.metric("Training rows", f"{len(training_data):,}")
+    # col2.metric("Test rows", f"{len(test_data):,}")
+    # col3.metric("Lag used", f"{lag} hours")
 
     # Parameter grid to try during cross validation.
     # You can expand these lists later if you want a wider search.
-    n_splits = st.slider("Number of CV folds", min_value=3, max_value=8, value=5, step=1)
+    # n_splits = st.slider("Number of CV folds", min_value=3, max_value=8, value=5, step=1)
     n_estimators_list = [100, 200, 300]
     max_depth_list = [5, 10, 15, None]
 
+    # Feature selection cross validated on default params
+    min_features = 1
+    
     # TimeSeriesSplit preserves time order:
     # earlier data is used for training, later data for validation.
     tscv = TimeSeriesSplit(n_splits=n_splits)
