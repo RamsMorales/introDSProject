@@ -178,6 +178,56 @@ with tab4: # hypothesis testing
         st.write(f"Yearly lag period - {nsdiffs(df["RT_Demand"],m=8760,test="ocsb")}")
         st.write("Since the daily, weekly, and yearly periods return 0 on the ocsb test, we do not need " \
         "differencing. A lag should suffice to capture the periodic behavior in the data.")
+    st.divider()
+    # ── Two-Sample Independent t-test ─────────────────────────────────────────
+    st.subheader("Bonus: t-test — Does Summer Demand Significantly Differ from Winter?")
+    st.write(
+        "Seasonal decomposition confirms a yearly cycle in RT_Demand. "
+        "We use an independent two-sample t-test to statistically verify that "
+        "summer (June–August) and winter (December–February) mean hourly demand are different."
+    )
+    with st.container(border=True):
+        st.latex(r"\mathbf{H_0} : \mu_{\text{summer}} = \mu_{\text{winter}}")
+        st.latex(r"\mathbf{H_a} : \mu_{\text{summer}} \neq \mu_{\text{winter}}")
+
+        df_ttest = df.copy()
+        df_ttest["Month"] = pd.to_datetime(df_ttest["Date"]).dt.month
+        summer = df_ttest[df_ttest["Month"].isin([6, 7, 8])]["RT_Demand"]
+        winter = df_ttest[df_ttest["Month"].isin([12, 1, 2])]["RT_Demand"]
+
+        t_stat, p_value = stats.ttest_ind(summer, winter, equal_var=False)  # Welch's t-test
+        alpha = 0.05
+
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("Summer Mean (MW)", f"{summer.mean():,.1f}")
+        col_b.metric("Winter Mean (MW)", f"{winter.mean():,.1f}")
+        col_c.metric("Difference (MW)", f"{summer.mean() - winter.mean():,.1f}")
+
+        st.write(f"**t-statistic:** {t_stat:.4f}")
+        st.write(f"**p-value:** {p_value:.2e}")
+
+        if p_value < alpha:
+            st.success(
+                f"p-value ({p_value:.2e}) < α (0.05) → **Reject H₀**. "
+                "There is a statistically significant difference in mean hourly RT_Demand "
+                "between summer and winter. Summer demand is on average "
+                f"{summer.mean() - winter.mean():,.0f} MW higher, driven by air-conditioning load."
+            )
+        else:
+            st.info("p-value ≥ α (0.05) → Fail to reject H₀.")
+
+        # Visual comparison
+        import plotly.graph_objects as go
+        fig_ttest = go.Figure()
+        fig_ttest.add_trace(go.Histogram(x=summer, name="Summer (Jun–Aug)", opacity=0.65, nbinsx=60))
+        fig_ttest.add_trace(go.Histogram(x=winter, name="Winter (Dec–Feb)", opacity=0.65, nbinsx=60))
+        fig_ttest.update_layout(
+            barmode="overlay",
+            title="RT_Demand Distribution: Summer vs. Winter",
+            xaxis_title="RT_Demand (MW)",
+            yaxis_title="Count",
+        )
+        st.plotly_chart(fig_ttest, use_container_width=True)
 
 with tab5:  # ML forecast
     st.subheader("Random Forest Forecast")
