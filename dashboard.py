@@ -2,11 +2,12 @@ import pandas as pd  # Pandas for data manipulation
 import streamlit as st  # Streamlit library for web apps (dashboards for our data)
 import plotly.express as px  # Plotly Express for creating charts
 from math import sqrt
-from statsmodels.tsa.stattools import adfuller, kpss
-from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.stattools import adfuller 
+from pmdarima.arima.utils import nsdiffs
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error
-from sklearn.model_selection import TimeSeriesSplit
+from sklearn.model_selection import TimeSeriesSplit, GridSearchCV 
+from sklearn.feature_selection import SelectFromModel
 from scipy import stats  # For t-test (hypothesis testing)
 
 import matplotlib.pyplot as plt
@@ -254,94 +255,175 @@ with tab5:  # ML forecast
     df_lagged["Month"] = df_lagged["DateTime"].dt.month
     # The first  168 rows have no previous-day value, so we remove them.
     df_lagged = df_lagged.dropna()
-    # Train on data before 2024 and test on 2024 onward.
+    # Train on data before 2025 and test on 2025 onward.
+#    Instead of doing the hold-out 80/20 method, we are going to estimate out of sample error by
+#    random sampling 2 24 hour periods for every week in the last year. The idea is to get a sampling 
+#    distribution of the out of sample error on the most recent data. To prevent leaking, we will retain
+#    that out of sample folds are on later data than training. 
+
+#    The rationale for this method is that--I think, and this "think" should be heavily emphasized-- this
+#    method is more representative of the use case. The problem from industry that we are simulating
+#    is predicting how much energy to purchace for tomorrow. A company like National grid puts in a bid
+#    at 10am today to purchase XXXX MW of energy for a given region for each HR in the next day. 
+
+#    Our original method of testing on the last year has the model predict too far away. Based on the
+#    toy problem, the model needs to predict 24 hours in advance so testing its ability to forecast next
+#    year does not capture the performance we want. Sampling 24 hours from the last year, however,
+#    does give us a sense to how the model performs while accounting for the yearly and weekly variation
+#    we noticed when examining the seasonal patterns in the data.  
+   
+#    I could be making a mistake here, I dont fully know if the previous method is bad. I implemented 
+#    SARIMA for the same problem using the previous and found the model smoothed the data too 
+#    much when fitting the model on the yearly scale. RF may not suffer from the same problem due 
+#    to its structure. But, for the sake of consistency, I want to use the same evaluation scheme. 
+   
+#    For the purposes of this project, this is not relevant. But I do think the extra effort should be 
+#    instructive for turning this project into a Capstone, hence, the choice to make this evaluation setup. 
+#    IDK, learning here.  
     # This keeps the split chronological, which is required for time-series modeling.
-    # training_data = df_lagged[df_lagged["Date"] < "2024-01-01"].copy()
-    # test_data = df_lagged[df_lagged["Date"] >= "2024-01-01"].copy()
+    training_data = df_lagged[df_lagged["Date"] < "2025-01-01"].copy()
+    test_data = df_lagged[df_lagged["Date"] >= "2025-01-01"].copy()
+    seed = 43 # I am a fan of primes 
 
-    # For now the model uses only one feature: yesterday's demand at the same hour.
-    # X_train_full = training_data[["RT_Demand-24"]]
-    # y_train_full = training_data["RT_Demand"]
-    # X_test = test_data[["RT_Demand-24"]]
-    # y_test = test_data["RT_Demand"]
+   # DA_Demand is a response variable that is highly correlated with RT_Demand
+   # Domain knowledge - DA_Demands is the estimate of what RT_Demand will be  
+    X_train_full = training_data.drop(columns=["RT_Demand","DA_Demand","Date","DateTime"])
+    y_train_full = training_data["RT_Demand"]
+    X_test = test_data.drop(columns=["RT_Demand","DA_Demand","Date","DateTime"])
+    y_test = test_data["RT_Demand"]
 
-    # st.markdown("**Training/Test Split**")
-    # col1, col2, col3 = st.columns(3)
-    # col1.metric("Training rows", f"{len(training_data):,}")
-    # col2.metric("Test rows", f"{len(test_data):,}")
-    # col3.metric("Lag used", f"{lag} hours")
+    selector = SelectFromModel(RandomForestRegressor(n_estimators=200, random_state= seed),
+                               threshold="mean")
+    selector.fit(X_train_full, y_train_full) 
+
+    importances = selector.estimator_.feature_importances_
+    feature_importance_df = pd.DataFrame({
+    'feature': X_train_full.columns,
+    'importance': importances,
+    'selected': selector.get_support()
+    }).sort_values('importance', ascending=False)
+
+    st.dataframe(feature_importance_df, use_container_width=True)
+    X_train_selected = selector.transform(X_train_full)
+    X_test_selected = selector.transform(X_test)
+
+    st.markdown("**Training/Test Split**")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Training rows", f"{len(training_data):,}")
+    col2.metric("Test rows", f"{len(test_data):,}")
+    col3.metric("Lag used", f"{lag} hours")
 
     # Parameter grid to try during cross validation.
-    # You can expand these lists later if you want a wider search.
-    # n_splits = st.slider("Number of CV folds", min_value=3, max_value=8, value=5, step=1)
-    n_estimators_list = [100, 200, 300]
-    max_depth_list = [5, 10, 15, None]
-
-    # Feature selection cross validated on default params
-    min_features = 1
+    n_splits = st.slider("Number of CV folds", min_value=3, max_value=8, value=5, step=1)
+    param_grid = {
+       "n_estimators":[10,50,100, 200],
+       "max_depth":[None,10,20,30],
+       'min_samples_split': [2, 5, 10],
+       'min_samples_leaf': [1, 2, 4],
+       } 
+    # chose these by copying this medium article. Honestly, don't yet know why. This is another thing
+    # to learn. 
+    #LINK: https://medium.com/@Doug-Creates/tuning-random-forest-parameters-with-scikit-learn-b53cbc602cd0
     
-    # TimeSeriesSplit preserves time order:
-    # earlier data is used for training, later data for validation.
-    tscv = TimeSeriesSplit(n_splits=n_splits)
-    cv_results = []
-    best_mae = float("inf")
-    best_params = {}
-
-    # Try every parameter combination and compute validation MAE on each fold.
-    for n_estimators in n_estimators_list:
-        for max_depth in max_depth_list:
-            fold_maes = []
-            fold_rmses = []
-            fold_mapes = []
-
-            for fold_number, (train_index, val_index) in enumerate(tscv.split(X_train_full), start=1):
-                X_train = X_train_full.iloc[train_index]
-                X_val = X_train_full.iloc[val_index]
-                y_train = y_train_full.iloc[train_index]
-                y_val = y_train_full.iloc[val_index]
-
-                model = RandomForestRegressor(
-                    n_estimators=n_estimators,
-                    max_depth=max_depth,
-                    random_state=42,
-                    n_jobs=-1,
-                )
-                model.fit(X_train, y_train)
-                y_pred = model.predict(X_val)
-                fold_mae = mean_absolute_error(y_val, y_pred)
-                fold_rmse = sqrt(mean_squared_error(y_val, y_pred))
-                fold_mape = mean_absolute_percentage_error(y_val, y_pred) * 100
-                fold_maes.append(fold_mae)
-                fold_rmses.append(fold_rmse)
-                fold_mapes.append(fold_mape)
-
-                # Save each fold result so it can be shown later in Streamlit.
-                cv_results.append(
-                    {
-                        "n_estimators": n_estimators,
-                        "max_depth": "None" if max_depth is None else max_depth,
-                        "fold": fold_number,
-                        "mae": fold_mae,
-                        "rmse": fold_rmse,
-                        "mape": fold_mape,
-                    }
-                )
-
-            # Average the fold errors for this parameter combination.
-            avg_mae = sum(fold_maes) / len(fold_maes)
-            if avg_mae < best_mae:
-                best_mae = avg_mae
-                best_params = {"n_estimators": n_estimators, "max_depth": max_depth}
-
-    cv_results_df = pd.DataFrame(cv_results)
-    # Summarize one row per parameter combination for the table and chart.
-    summary_df = (
-        cv_results_df.groupby(["n_estimators", "max_depth"], as_index=False)[["mae", "rmse", "mape"]]
-        .mean()
-        .rename(columns={"mae": "avg_mae", "rmse": "avg_rmse", "mape": "avg_mape"})
-        .sort_values("avg_mae")
+    search = GridSearchCV(
+        RandomForestRegressor(random_state=seed),
+        param_grid,
+        cv = TimeSeriesSplit(n_splits=n_splits),
+        scoring=["neg_root_mean_squared_error",
+                        "neg_mean_absolute_percentage_error",
+                        "neg_mean_absolute_error"],
+        refit="neg_root_mean_squared_error",
+        n_jobs=-1 # lot of jobs, lots of compute
     )
-    best_summary_row = summary_df.iloc[0]
+
+    # Chose scoring based on what we use later for reporting. RMSE gives us average in units of MW
+    # MAPE is nice because we can get a sense of scale. 4% increase in accuracy could mean lots of 
+    # money so if we were to report this to decision makers on the team, that would help a lot.
+    
+    search.fit(X_train_selected, y_train_full)
+    # # TimeSeriesSplit preserves time order:
+    # # earlier data is used for training, later data for validation.
+    # tscv = TimeSeriesSplit(n_splits=n_splits)
+    cv_results = pd.DataFrame(search.cv_results_) 
+    summary_df = cv_results[[
+        "param_n_estimators","param_max_depth",
+        "param_min_samples_split","param_min_samples_leaf",
+        "mean_test_neg_mean_absolute_error",
+        "mean_test_neg_root_mean_squared_error",
+        "mean_test_neg_mean_absolute_percentage_error"
+    ]].copy()
+
+    summary_df.columns = [
+        "n_estimators",
+        "max_depth",
+        "min_samples_split",
+        "min_samples_leaf",
+        "avg_mae",
+        "avg_rmse",
+        "avg_mape"
+        ]
+    # transforming report values to positive readable format 
+    summary_df[["avg_mae","avg_rmse","avg_mape"]] *= -1
+    summary_df["avg_mape"] *= 100 # now as a percent
+    summary_df.sort_values("avg_mae")
+    # best_mae = float("inf")
+    # best_params = {}
+
+    # # Try every parameter combination and compute validation MAE on each fold.
+    # for n_estimators in n_estimators_list:
+    #     for max_depth in max_depth_list:
+    #         fold_maes = []
+    #         fold_rmses = []
+    #         fold_mapes = []
+
+    #         for fold_number, (train_index, val_index) in enumerate(tscv.split(X_train_full), start=1):
+    #             X_train = X_train_full.iloc[train_index]
+    #             X_val = X_train_full.iloc[val_index]
+    #             y_train = y_train_full.iloc[train_index]
+    #             y_val = y_train_full.iloc[val_index]
+
+    #             model = RandomForestRegressor(
+    #                 n_estimators=n_estimators,
+    #                 max_depth=max_depth,
+    #                 random_state=42,
+    #                 n_jobs=-1,
+    #             )
+    #             model.fit(X_train, y_train)
+    #             y_pred = model.predict(X_val)
+    #             fold_mae = mean_absolute_error(y_val, y_pred)
+    #             fold_rmse = sqrt(mean_squared_error(y_val, y_pred))
+    #             fold_mape = mean_absolute_percentage_error(y_val, y_pred) * 100
+    #             fold_maes.append(fold_mae)
+    #             fold_rmses.append(fold_rmse)
+    #             fold_mapes.append(fold_mape)
+
+    #             # Save each fold result so it can be shown later in Streamlit.
+    #             cv_results.append(
+    #                 {
+    #                     "n_estimators": n_estimators,
+    #                     "max_depth": "None" if max_depth is None else max_depth,
+    #                     "fold": fold_number,
+    #                     "mae": fold_mae,
+    #                     "rmse": fold_rmse,
+    #                     "mape": fold_mape,
+    #                 }
+    #             )
+
+    #         # Average the fold errors for this parameter combination.
+    #         avg_mae = sum(fold_maes) / len(fold_maes)
+    #         if avg_mae < best_mae:
+    #             best_mae = avg_mae
+    #             best_params = {"n_estimators": n_estimators, "max_depth": max_depth}
+
+    # cv_results_df = pd.DataFrame(cv_results)
+    # # Summarize one row per parameter combination for the table and chart.
+    # summary_df = (
+    #     cv_results_df.groupby(["n_estimators", "max_depth"], as_index=False)[["mae", "rmse", "mape"]]
+    #     .mean()
+    #     .rename(columns={"mae": "avg_mae", "rmse": "avg_rmse", "mape": "avg_mape"})
+    #     .sort_values("avg_mae")
+    # )
+    # best_summary_row = summary_df.iloc[0]
 
     st.markdown("**Cross Validation Results**")
     st.dataframe(summary_df, use_container_width=True)
@@ -358,36 +440,41 @@ with tab5:  # ML forecast
     st.plotly_chart(cv_chart, use_container_width=True)
 
     st.markdown("**Best Parameters**")
-    st.write(
-        {
-            "n_estimators": best_params["n_estimators"],
-            "max_depth": "None" if best_params["max_depth"] is None else best_params["max_depth"],
-            "cv_mae": round(best_summary_row["avg_mae"], 2),
-            "cv_rmse": round(best_summary_row["avg_rmse"], 2),
-            "cv_mape_percent": round(best_summary_row["avg_mape"], 2),
-        }
-    )
+    st.write(search.best_params_)
 
+    # st.write(
+    #     {
+    #         "n_estimators": best_params["n_estimators"],
+    #         "max_depth": "None" if best_params["max_depth"] is None else best_params["max_depth"],
+    #         "cv_mae": round(best_summary_row["avg_mae"], 2),
+    #         "cv_rmse": round(best_summary_row["avg_rmse"], 2),
+    #         "cv_mape_percent": round(best_summary_row["avg_mape"], 2),
+    #     }
+    # )
+    best_summary_row = summary_df.iloc[0]
     st.markdown("**Validation Performance (Average Across Folds)**")
     val_col1, val_col2, val_col3 = st.columns(3)
     val_col1.metric("Validation MAE", f"{best_summary_row['avg_mae']:,.2f}")
     val_col2.metric("Validation RMSE", f"{best_summary_row['avg_rmse']:,.2f}")
     val_col3.metric("Validation MAPE", f"{best_summary_row['avg_mape']:,.2f}%")
 
-    # Refit the model on the full training set using the winning parameters.
-    final_model = RandomForestRegressor(
-        n_estimators=best_params["n_estimators"],
-        max_depth=best_params["max_depth"],
-        random_state=42,
-        n_jobs=-1,
-    )
-    final_model.fit(X_train_full, y_train_full)
-    test_predictions = final_model.predict(X_test)
+    # # Refit the model on the full training set using the winning parameters.
+    # final_model = RandomForestRegressor(
+    #     n_estimators=best_params["n_estimators"],
+    #     max_depth=best_params["max_depth"],
+    #     random_state=42,
+    #     n_jobs=-1,
+    # )
+
+    # # Refit the model on the full training set using the winning parameters.
+    final_model = search.best_estimator_
+    # final_model.fit(X_train_full, y_train_full)
+    test_predictions = final_model.predict(X_test_selected)
     test_mae = mean_absolute_error(y_test, test_predictions)
     test_rmse = sqrt(mean_squared_error(y_test, test_predictions))
     test_mape = mean_absolute_percentage_error(y_test, test_predictions) * 100
 
-    # Store actual and predicted values together for plotting.
+    # # Store actual and predicted values together for plotting.
     predictions_df = test_data[["DateTime", "RT_Demand"]].copy()
     predictions_df["Predicted_RT_Demand"] = test_predictions
 
@@ -397,7 +484,7 @@ with tab5:  # ML forecast
     test_col2.metric("Test RMSE", f"{test_rmse:,.2f}")
     test_col3.metric("Test MAPE", f"{test_mape:,.2f}%")
 
-    # Show only the first 14 test days so the chart stays readable.
+    # # Show only the first 14 test days so the chart stays readable.
     forecast_chart = px.line(
         predictions_df.head(24 * 14),
         x="DateTime",
@@ -407,15 +494,19 @@ with tab5:  # ML forecast
     )
     st.plotly_chart(forecast_chart, use_container_width=True)
 
-    # Interpretation of the Results
+    # # Interpretation of the Results
     st.divider()
     st.subheader("Interpretation of the Results")
     st.write(
-        "Overall we are pretty satisfied with how the model performed. We used three features: "
-        "the RT_Demand from the same hour the previous day (24-hour lag), the RT_Demand from "
-        "the same hour one week earlier (168-hour lag), and a Month variable to capture yearly "
-        "fluctuations. The model was trained on 2018 through 2023 and evaluated on the fully "
-        "held-out 2024 and 2025 data."
+        "Overall we are pretty satisfied with how the model performed. Selected features: "
+        "the RT_Demand from the same hour the previous day (24-hour lag),  and Dry Bulb temperature"
+        ". This makes sense given what is typically expected from models in the domain. A regression" \
+        " study on the same data that was done last semester revealed that Heating Degree Days which " \
+        " is an aggregate indicator of temperature was the most significant predictor for Total demand " \
+        " thus, the selection makes aligns with earlier results in the model. Further, since the data response " \
+        " is expected to have high correlation with the time before--evident in the key findings, the importance" \
+        " of the lag 24 is reasonable as well. The model was trained on 2018 through 2024 and evaluated on the fully "
+        "held-out 2025 to simulate the business use for this kind of model."
     )
     with st.container(border=True):
         st.markdown("**What the metrics are actually telling us**")
@@ -429,29 +520,38 @@ with tab5:  # ML forecast
             "The thing we paid most attention to is that the cross-validation MAE and the test MAE "
             "are in the same ballpark. If the test error had been much worse than CV, that would "
             "have been a sign of overfitting to the training years, but that does not appear to "
-            "be happening here."
+            "be happening here. In fact, we are doing slightly better on out of sample performance indicating" \
+            " the model selection process may be able to generalize well. To examine this we would have to nest " \
+            "the feature selection and hyperparameter searching in an outer CV to get a sampling distribution " \
+            "for the modeling process. So we cannot overclaim performance here, despite positive outlook from this test."
         )
     with st.container(border=True):
         st.markdown("**How this connects back to the hypothesis tests and EDA**")
         st.write(
-            "The stationarity tests (ADF and KPSS) both pointed to the same conclusion: RT_Demand "
-            "does not have a long-run trend, so we did not need to difference the series before "
-            "modeling. That is part of why lag-based features work as well as they do. The t-test "
+            "The stationarity tests (ADF) and seasonality test (OCSB) both pointed to the same conclusion: RT_Demand "
+            "does not have a long-run trend nor a stochastic seasonality pattern," \
+            " so we did not need to difference the series before modeling." \
+            " That is part of why lag-based features work as well as they do. The t-test "
             "showed that summer demand is about 270 MW higher than winter demand on average, and "
             "the Month feature directly captures this by telling the model what time of year it is. "
             "The 24-hour lag handles the daily pattern and the 168-hour lag picks up the weekly "
-            "rhythm we saw in the Key Findings tab."
+            "rhythm we saw in the Key Findings tab. It is interesting that the model did not consider these " \
+            "to be important, this may have to do with the way the model is being tested. Since it is forward " \
+            "24 hours ahead, the correlation in the demand may capture the higher level fluctuations, or " \
+            "the feature selection setup is not capturing that behavior. Additionaly, there could be an explanation " \
+            "that we have not considered here."
         )
     with st.container(border=True):
         st.markdown("**Where the model still struggles**")
         st.write(
-            "Even with three features, the model has no way to anticipate sudden demand deviations "
+            "Even with these features, the model has no way to anticipate sudden demand deviations "
             "caused by extreme weather events or major holidays. If last week and yesterday were "
-            "both normal days but today is an unexpected heat wave, the lags and month will not "
-            "capture that spike. You can see this in the forecast chart when the predicted line "
-            "and the actual line diverge the most. Those tend to be the most operationally "
-            "important days from a grid perspective, which is exactly when you need the forecast "
-            "to be reliable."
+            "both normal days but today deviates greatly from the estimated inputs, the model may not "
+            "capture that that variation. Although, literature from the domain indicates that tree based " \
+            "and deep learning methods generalize quite well [1,2,3,4,5] You can see this in the forecast " \
+            "chart when the predicted line and the actual line diverge the most. Those tend to be the " \
+            "most operationally important days from a grid perspective, which is exactly when you " \
+            "need the forecast to be reliable."
         )
 
     # Improvements and Next Steps
@@ -461,15 +561,9 @@ with tab5:  # ML forecast
     with col_imp1:
         st.markdown("**Features we would add next**")
         st.write(
-            "The most impactful addition would be weather variables. Dry_Bulb temperature and "
-            "Dew_Point are already in the dataset and we know from the correlation heatmap that "
-            "temperature is moderately correlated with demand. On a hot humid day those two columns "
-            "alone would give the model a much better signal for peak demand hours. We would also "
-            "add a day-of-week feature and a public holiday flag, since the weekly pattern in the "
-            "Key Findings tab shows that weekends are consistently lower than weekdays and the "
-            "current model has no way to know what day it is. Day-Ahead demand (DA_Demand) is "
-            "another strong candidate since market participants already forecast it and it is "
-            "highly correlated with RT_Demand."
+            "We would also add a day-of-week feature and a public holiday flag, since the weekly " \
+            "pattern in the Key Findings tab shows that weekends are consistently lower than weekdays "
+            "and the current model has no way to know what day it is."
         )
     with col_imp2:
         st.markdown("**Modeling improvements worth trying**")
@@ -479,9 +573,7 @@ with tab5:  # ML forecast
             "feature set grows. For a more ambitious version of this project, an LSTM network "
             "could learn the daily and yearly seasonality directly from the sequence without "
             "needing us to engineer lag features manually. We would also want to expand the "
-            "hyperparameter search a bit, particularly by trying different values for "
-            "min_samples_leaf and max_features which we did not tune here. Finally, adding "
-            "prediction intervals to the output would make the forecasts more useful in practice, "
-            "since knowing the uncertainty around a prediction matters just as much as the "
-            "prediction itself when you are managing a power grid."
+            "hyperparameter search a bit. Finally, adding prediction intervals to the output would make " \
+            "the forecasts more useful in practice, since knowing the uncertainty around a prediction " \
+            "matters just as much as the prediction itself when you are managing a power grid."
         )
